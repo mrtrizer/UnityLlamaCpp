@@ -1,0 +1,7 @@
+{
+    "name": "com.abuksigun.llama-cpp",
+    "version": "0.1.0",
+    "displayName": "Llama.Cpp",
+    "description": "",
+    "unity": "2021.2"
+}
