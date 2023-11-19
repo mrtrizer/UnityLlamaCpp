@@ -5,55 +5,7 @@ namespace Abuksigun.LlamaCpp
 {
     public unsafe static class LlamaLibrary
     {
-        private const string DllName = "llama.dll";
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void llama_backend_init(bool numa);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr llama_load_model_from_file(string path_model, LlamaModelParams model_params);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void llama_free_model(IntPtr model);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int llama_n_ctx(IntPtr ctx);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern LlamaBatch llama_batch_init(int n_tokens, int embd, int n_seq_max);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int llama_decode(IntPtr ctx, LlamaBatch batch);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr llama_new_context_with_model(IntPtr model, LlamaContextParams ctx_params);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void llama_free(IntPtr ctx);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int llama_tokenize(IntPtr model, string text, int text_len, int[] tokens, int n_max_tokens, bool add_bos, bool special);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr llama_get_logits(IntPtr ctx);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr llama_get_logits_ith(IntPtr ctx, int i);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl )]
-        public static extern int llama_n_vocab(IntPtr model);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int llama_sample_token_greedy(IntPtr ctx, ref LlamaTokenDataArray candidates);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int llama_token_to_piece(IntPtr model, int token, byte* buffer, int length);
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void llama_backend_free();
-
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int llama_token_eos(IntPtr model);
+        private const string DllName = "llama";
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void LlamaProgressCallback(float progress, IntPtr ctx);
@@ -104,11 +56,11 @@ namespace Abuksigun.LlamaCpp
             public bool logits_all;
             public bool embedding;
 
-            public LlamaContextParams(uint seed, uint nThreads = 1, sbyte ropeScaling = -1 )
+            public LlamaContextParams(uint seed, uint nThreads = 1, uint contextSize = 2048, sbyte ropeScaling = -1 )
             {
                 this.seed = seed;
-                n_ctx = 512;
-                n_batch = 512;
+                n_ctx = contextSize;
+                n_batch = contextSize;
                 n_threads = nThreads;
                 n_threads_batch = nThreads;
                 rope_scaling_type = ropeScaling;
@@ -158,5 +110,53 @@ namespace Abuksigun.LlamaCpp
             private int _all_pos_1;
             private int _all_seq_id;
         }
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_backend_init(bool numa);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr llama_load_model_from_file(string path_model, LlamaModelParams model_params);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_free_model(IntPtr model);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int llama_n_ctx(IntPtr ctx);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern LlamaBatch llama_batch_init(int n_tokens, int embd, int n_seq_max);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int llama_decode(IntPtr ctx, LlamaBatch batch);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr llama_new_context_with_model(IntPtr model, LlamaContextParams ctx_params);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_free(IntPtr ctx);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int llama_tokenize(IntPtr model, string text, int text_len, [MarshalAs(UnmanagedType.LPArray)] int[] tokens, int n_max_tokens, bool add_bos, bool special);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr llama_get_logits(IntPtr ctx);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr llama_get_logits_ith(IntPtr ctx, int i);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int llama_n_vocab(IntPtr model);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int llama_sample_token_greedy(IntPtr ctx, ref LlamaTokenDataArray candidates);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int llama_token_to_piece(IntPtr model, int token, [MarshalAs(UnmanagedType.LPArray)] byte[] buffer, int length);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_backend_free();
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int llama_token_eos(IntPtr model);
     }
 }
