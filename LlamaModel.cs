@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,6 +24,7 @@ namespace Abuksigun.LlamaCpp
         public IntPtr NativeContextPointer => contextPointer;
         public int EosToken => LlamaLibrary.llama_token_eos(modelPointer);
         public int ContextSize => LlamaLibrary.llama_n_ctx(contextPointer);
+        public int VocabLength => LlamaLibrary.llama_n_vocab(modelPointer);
 
         public static async Task<LlamaModel> LoadModel(string modelPath, IProgress<float> progress)
         {
@@ -87,38 +91,39 @@ namespace Abuksigun.LlamaCpp
             }
         }
 
-        public Task<string> RunAsync(string prompt, int outputLength = 32, IProgress<string> progress = null, CancellationToken? cancellationToken = null)
+        public Task<string> RunAsync(string prompt, int outputLength = 32, SamplingParams samplingParams = null, IProgress<string> progress = null, CancellationToken? ct = null)
         {
             return Task.Run(() => {
-                var tokenSource = cancellationToken != null ? CancellationTokenSource.CreateLinkedTokenSource(disposeCancellationTokenSource.Token, cancellationToken.Value) : disposeCancellationTokenSource;
-                return Run(prompt, contextPointer, outputLength, progress, tokenSource.Token);
+                var tokenSource = ct != null ? CancellationTokenSource.CreateLinkedTokenSource(disposeCancellationTokenSource.Token, ct.Value) : disposeCancellationTokenSource;
+                return Run(prompt, contextPointer, outputLength, samplingParams ?? new(), progress, tokenSource.Token);
             });
         }
 
-        string Run(string prompt, IntPtr ctx, int outputLength, IProgress<string> progress = null, CancellationToken? cancellationToken = null)
+        string Run(string prompt, IntPtr context, int outputLength, SamplingParams samplingParams, IProgress<string> progress = null, CancellationToken? cancellationToken = null)
         {
             StringBuilder outputStringBuilder = new StringBuilder();
 
             int eosToken = EosToken;
             int[] tokens = TokenizePrompt(prompt, true);
-
+            
+            var samplingContext = new LlamaSamplingContext(samplingParams, tokens);
+            
             int totalTokens = tokens.Length + outputLength;
             if (totalTokens > ContextSize)
                 throw new LlamaException($"Error: Model context size {ContextSize} tokens can't fit total of {totalTokens} tokens expected");
 
             LlamaLibrary.LlamaBatch batch = CreateBatch(tokens, totalTokens);
 
-            int decodeResult = LlamaLibrary.llama_decode(ctx, batch);
+            int decodeResult = LlamaLibrary.llama_decode(context, batch);
             if (decodeResult != 0)
                 throw new LlamaException($"llama_decode() failed Code: {decodeResult}");
 
             for (int i = batch.n_tokens; i < totalTokens; i++)
             {
-                // Sample the next token
-                LlamaLibrary.LlamaTokenData[] candidates = FindCandidates(ctx, batch);
-
-                int newTokenId = SampleToken(ctx, candidates);
-                    
+                int newTokenId = SampleToken(samplingContext, batch.n_tokens - 1);
+                
+                samplingContext.AddToken(newTokenId);
+                
                 if (newTokenId == eosToken)
                     break;
 
@@ -133,24 +138,21 @@ namespace Abuksigun.LlamaCpp
 
                 if (cancellationToken?.IsCancellationRequested ?? false)
                     break;
-                if (LlamaLibrary.llama_decode(ctx, batch) != 0)
+                if (LlamaLibrary.llama_decode(context, batch) != 0)
                     throw new LlamaException("llama_decode() failed");
             }
             return outputStringBuilder.ToString();
         }
 
-        public int GetVocabLength()
+        unsafe int SampleTokenGreedy(IntPtr ctx, int idx)
         {
-            return LlamaLibrary.llama_n_vocab(modelPointer);
-        }
+            LlamaLibrary.LlamaTokenData[] candidates = FindCandidates(ctx, idx);
 
-        static unsafe int SampleToken(IntPtr ctx, LlamaLibrary.LlamaTokenData[] candidates)
-        {
             fixed (LlamaLibrary.LlamaTokenData* pCandidates = candidates)
             {
                 var candidatesArray = new LlamaLibrary.LlamaTokenDataArray
                 {
-                    data = new IntPtr(pCandidates),
+                    data = pCandidates,
                     size = candidates.Length,
                     sorted = false
                 };
@@ -161,10 +163,10 @@ namespace Abuksigun.LlamaCpp
             }
         }
 
-        public unsafe LlamaLibrary.LlamaTokenData[] FindCandidates(IntPtr ctx, LlamaLibrary.LlamaBatch batch)
+        public unsafe LlamaLibrary.LlamaTokenData[] FindCandidates(IntPtr ctx, int idx)
         {
-            IntPtr logitsPtr = LlamaLibrary.llama_get_logits_ith(ctx, batch.n_tokens - 1);
-            int vocabLength = GetVocabLength();
+            IntPtr logitsPtr = LlamaLibrary.llama_get_logits_ith(ctx, idx);
+            int vocabLength = VocabLength;
             LlamaLibrary.LlamaTokenData[] candidates = new LlamaLibrary.LlamaTokenData[vocabLength];
             
             float* logits = (float*)logitsPtr.ToPointer();
@@ -232,6 +234,139 @@ namespace Abuksigun.LlamaCpp
 
             string result = Encoding.UTF8.GetString(buffer);
             return result;
+        }
+
+        public unsafe class LlamaSamplingContext
+        {
+            public SamplingParams Params { get; }
+            public int[] Prev { get; }
+            public List<LlamaLibrary.LlamaTokenData> Cur { get; } = new();
+            public LlamaLibrary.LlamaGrammar* Grammar { get; }
+
+            public LlamaSamplingContext(SamplingParams parameters, int[] promptTokens)
+            {
+                Params = parameters;
+                int fillLength = Mathf.Max(parameters.NPrev - promptTokens.Length, 0);
+                int skipLength = Mathf.Max(promptTokens.Length - parameters.NPrev, 0);
+                Prev = Enumerable.Repeat(0, fillLength).Concat(promptTokens.Skip(skipLength)).ToArray();
+            }
+
+            public void AddToken(int id)
+            {
+                for (int i = 0; i < Prev.Length - 1; i++)
+                    Prev[i] = Prev[i + 1];
+                Prev[Prev.Length - 1] = id;
+            }
+        }
+
+        public class SamplingParams
+        {
+            public float Temp { get; set; } = 0.80f;
+            public int TopK { get; set; } = 40;
+            public float TopP { get; set; } = 0.95f;
+            public float MinP { get; set; } = 0.05f;
+            public float TfsZ { get; set; } = 1.00f;
+            public float TypicalP { get; set; } = 1.00f;
+            public int PenaltyLastN { get; set; } = 64;
+            public float PenaltyRepeat { get; set; } = 1.10f;
+            public float PenaltyFreq { get; set; } = 0.00f;
+            public float PenaltyPresent { get; set; } = 0.00f;
+            public bool PenalizeNl { get; set; } = true;
+            public Dictionary<int, float> LogitBias { get; set; } = new Dictionary<int, float>();
+            public int NPrev { get; set; } = 64;
+            public int NProbs { get; set; } = 0;
+        }
+
+        public unsafe int SampleToken(LlamaSamplingContext samplingContext, int idx)
+        {
+            SamplingParams parameters = samplingContext.Params;
+
+            int vocabLength = VocabLength;
+
+            float temp = parameters.Temp;
+            int topK = parameters.TopK <= 0 ? vocabLength : parameters.TopK;
+            float topP = parameters.TopP;
+            float minP = parameters.MinP;
+            float tfsZ = parameters.TfsZ;
+            float typicalP = parameters.TypicalP;
+            int penaltyLastN = parameters.PenaltyLastN < 0 ? parameters.NPrev : parameters.PenaltyLastN;
+            float penaltyRepeat = parameters.PenaltyRepeat;
+            float penaltyFreq = parameters.PenaltyFreq;
+            float penaltyPresent = parameters.PenaltyPresent;
+            bool penalizeNl = parameters.PenalizeNl;
+
+            var prev = samplingContext.Prev;
+            var cur = samplingContext.Cur;
+
+            IntPtr logitsPtr = LlamaLibrary.llama_get_logits_ith(contextPointer, idx);
+            float[] logits = new float[vocabLength];
+            Marshal.Copy(logitsPtr, logits, 0, vocabLength);
+
+            foreach (var bias in parameters.LogitBias)
+                logits[bias.Key] += bias.Value;
+
+            cur.Clear();
+
+            for (int tokenID = 0; tokenID < vocabLength; tokenID++)
+                cur.Add(new LlamaLibrary.LlamaTokenData { id = tokenID, logit = logits[tokenID], p = 0 });
+
+            var curArray = cur.ToArray();
+            fixed (LlamaLibrary.LlamaTokenData* pCurArray = curArray)
+            {
+                LlamaLibrary.LlamaTokenDataArray curP = new LlamaLibrary.LlamaTokenDataArray
+                {
+                    data = pCurArray,
+                    size = cur.Count,
+                    sorted = false
+                };
+
+                if (prev.Length > 0)
+                {
+                    int nlTokenId = LlamaLibrary.llama_token_nl(modelPointer);
+                    float nlLogit = logits[nlTokenId];
+
+                    LlamaLibrary.llama_sample_repetition_penalties(contextPointer, &curP, prev, prev.Length, penaltyRepeat, penaltyFreq, penaltyPresent);
+
+                    // If not penalizing new lines, reset the logit for the newline token
+                    if (!penalizeNl)
+                    {
+                        for (int i = 0; i < curP.size; i++)
+                        {
+                            if (curP.data[i].id == nlTokenId)
+                            {
+                                curP.data[i].logit = nlLogit;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                int id = 0;
+                if (temp < 0.0f)
+                {
+                    LlamaLibrary.llama_sample_softmax(contextPointer, &curP);
+                    id = curP.data[0].id;
+                }
+                else if (temp == 0.0f)
+                {
+                    id = LlamaLibrary.llama_sample_token_greedy(contextPointer, ref curP);
+                }
+                else
+                {
+                    int minKeep = Math.Max(1, parameters.NProbs);
+
+                    LlamaLibrary.llama_sample_top_k(contextPointer, &curP, topK, minKeep);
+                    LlamaLibrary.llama_sample_tail_free(contextPointer, &curP, tfsZ, minKeep);
+                    LlamaLibrary.llama_sample_typical(contextPointer, &curP, typicalP, minKeep);
+                    LlamaLibrary.llama_sample_top_p(contextPointer, &curP, topP, minKeep);
+                    LlamaLibrary.llama_sample_min_p(contextPointer, &curP, minP, minKeep);
+                    LlamaLibrary.llama_sample_temp(contextPointer, &curP, temp);
+
+                    id = LlamaLibrary.llama_sample_token(contextPointer, &curP);
+                }
+
+                return id;
+            }
         }
     }
 }

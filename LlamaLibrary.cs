@@ -81,7 +81,7 @@ namespace Abuksigun.LlamaCpp
         [StructLayout(LayoutKind.Sequential)]
         public struct LlamaTokenDataArray
         {
-            public IntPtr data;
+            public LlamaTokenData* data;
             public int size;
             public bool sorted;
         }
@@ -109,6 +109,15 @@ namespace Abuksigun.LlamaCpp
             private int _all_pos_0;
             private int _all_pos_1;
             private int _all_seq_id;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct LlamaGrammar
+        {
+            // const std::vector<std::vector<llama_grammar_element>> rules;
+            // std::vector<std::vector<const llama_grammar_element*>> stacks;
+
+            // llama_partial_utf8 partial_utf8;
         }
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -158,5 +167,46 @@ namespace Abuksigun.LlamaCpp
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int llama_token_eos(IntPtr model);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int llama_token_nl(IntPtr model);
+
+
+
+        // Sampling
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_repetition_penalties(IntPtr ctx, LlamaTokenDataArray* candidates, [MarshalAs(UnmanagedType.LPArray)] int[] lastTokens, int penaltyLastN, float penaltyRepeat, float penaltyFreq, float penaltyPresent);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_classifier_free_guidance(IntPtr ctx, LlamaTokenDataArray* candidates, IntPtr guidanceCtx, float scale);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_softmax(IntPtr ctx, LlamaTokenDataArray* candidates);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_top_k(IntPtr ctx, LlamaTokenDataArray* candidates, int k, int minKeep);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_top_p(IntPtr ctx, LlamaTokenDataArray* candidates, float p, int minKeep);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_min_p(IntPtr ctx, LlamaTokenDataArray* candidates, float p, int minKeep);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_tail_free(IntPtr ctx, LlamaTokenDataArray* candidates, float z, int minKeep);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_typical(IntPtr ctx, LlamaTokenDataArray* candidates, float p, int minKeep);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_temp(IntPtr ctx, LlamaTokenDataArray* candidates, float temp);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_temperature(IntPtr ctx,  LlamaTokenDataArray* candidates, float temp);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void llama_sample_grammar(IntPtr ctx,  LlamaTokenDataArray* candidates, IntPtr grammar);
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int llama_sample_token(IntPtr ctx, LlamaTokenDataArray* candidates);
     }
 }
