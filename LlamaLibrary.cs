@@ -18,9 +18,9 @@ namespace Abuksigun.LlamaCpp
             public IntPtr tensor_split;
             public LlamaProgressCallback progress_callback;
             public IntPtr progress_callback_user_data;
-            public bool vocab_only;
-            public bool use_mmap;
-            public bool use_mlock;
+            [MarshalAs(UnmanagedType.I1)] public bool vocab_only;
+            [MarshalAs(UnmanagedType.I1)] public bool use_mmap;
+            [MarshalAs(UnmanagedType.I1)] public bool use_mlock;
 
             public LlamaModelParams(LlamaProgressCallback progressCallback, IntPtr progressCallbackUserData, int nGpuLayers = 0)
             {
@@ -51,10 +51,10 @@ namespace Abuksigun.LlamaCpp
             public float yarn_beta_fast;
             public float yarn_beta_slow;
             public uint yarn_orig_ctx;
-            public bool mul_mat_q;
-            public bool f16_kv;
-            public bool logits_all;
-            public bool embedding;
+            [MarshalAs(UnmanagedType.I1)] public bool mul_mat_q;
+            [MarshalAs(UnmanagedType.I1)] public bool f16_kv;
+            [MarshalAs(UnmanagedType.I1)] public bool logits_all;
+            [MarshalAs(UnmanagedType.I1)] public bool embedding;
 
             public LlamaContextParams(uint seed, uint nThreads = 1, uint contextSize = 2048, sbyte ropeScaling = -1 )
             {
@@ -83,7 +83,7 @@ namespace Abuksigun.LlamaCpp
         {
             public LlamaTokenData* data;
             public int size;
-            public bool sorted;
+            [MarshalAs(UnmanagedType.I1)] public bool sorted;
         }
 
         [StructLayout(LayoutKind.Sequential)]

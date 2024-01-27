@@ -26,14 +26,14 @@ namespace Abuksigun.LlamaCpp
         public int ContextSize => LlamaLibrary.llama_n_ctx(contextPointer);
         public int VocabLength => LlamaLibrary.llama_n_vocab(modelPointer);
 
-        public static async Task<LlamaModel> LoadModel(string modelPath, IProgress<float> progress)
+        public static async Task<LlamaModel> LoadModel(string modelPath, IProgress<float> progress, uint contextSize = 2048, int gpuLayers = 0)
         {
             int threadsN = SystemInfo.processorCount;
             (IntPtr newModelPointer, IntPtr newContextPointer) = await Task.Run<(IntPtr, IntPtr)>(() =>
             {
                 LlamaLibrary.llama_backend_init(numa: false);
 
-                var modelParams = new LlamaLibrary.LlamaModelParams((float progressFloat, IntPtr _) => progress.Report(progressFloat), IntPtr.Zero);
+                var modelParams = new LlamaLibrary.LlamaModelParams((float progressFloat, IntPtr _) => progress.Report(progressFloat), IntPtr.Zero, gpuLayers);
                 try
                 {
                     IntPtr model = LlamaLibrary.llama_load_model_from_file(modelPath, modelParams);
@@ -41,7 +41,7 @@ namespace Abuksigun.LlamaCpp
                         throw new LlamaException("Failed to load the Llama model");
                     try
                     {
-                        var ctxParams = new LlamaLibrary.LlamaContextParams(1234, (uint)threadsN);
+                        var ctxParams = new LlamaLibrary.LlamaContextParams(1234, (uint)threadsN, contextSize: contextSize);
                         IntPtr ctx = LlamaLibrary.llama_new_context_with_model(model, ctxParams);
                         if (ctx == IntPtr.Zero)
                             throw new LlamaException("Failed to create the Llama context");

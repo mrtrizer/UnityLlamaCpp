@@ -17,6 +17,7 @@ namespace Abuksigun.LlamaCpp
         [SerializeField, TextArea(10, 10)] string userPrompt = "You are in a Tavern\nHP:40%\nWhat is your next action:";
         [SerializeField, TextArea(10, 10)] string assistantPrompt = "I will";
 
+        [SerializeField] int gpuLayers = 0;
         [SerializeField, Range(0, 1.5f)] float temperature = 0.8f;
 
         [ContextMenu("Run")]
@@ -26,7 +27,7 @@ namespace Abuksigun.LlamaCpp
             const string customEos = "<|im_end|>";
 
             string fullModelPath = Path.Join(Application.streamingAssetsPath, modelPath);
-            model ??= await LlamaModel.LoadModel(fullModelPath, new Progress<float>(x => Debug.Log($"Progress {x}")));
+            model ??= await LlamaModel.LoadModel(fullModelPath, new Progress<float>(x => Debug.Log($"Progress {x}")), gpuLayers: gpuLayers);
             Debug.Log($"Model context size: {model.ContextSize} tokens.");
 
             cts = new CancellationTokenSource();
@@ -50,6 +51,14 @@ namespace Abuksigun.LlamaCpp
         public void Stop()
         {
             cts?.Cancel();
+        }
+
+        [ContextMenu("Reset Model")]
+        public void ResetModel()
+        {
+            cts?.Cancel();
+            model?.Dispose();
+            model = null;
         }
 
         public static string FormatPrompt(string promptFormat, string system, string user, string assistant = "")
